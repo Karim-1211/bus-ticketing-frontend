@@ -9,10 +9,10 @@ const ROWS = ['A','B','C','D','E','F','G','H','I','J'];
 const BUS_IMAGES = {
   'green line': 'https://images.unsplash.com/photo-1570125909232-eb263c188f7e?w=400',
   'nabil': 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=400',
-  'hanif': 'https://images.unsplash.com/photo-1464219789935-c2d9d9aba644?w=400',
-  'shyamoli': 'https://images.unsplash.com/photo-1601933470096-0e34634ffcde?w=400',
-  'flex bus': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400',
-  'blablacar': 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=400',
+  'hanif': 'https://grabcad.com/screenshots/pics/3674e8fab755506f746655413dc96f8c/large.jpg',
+  'shyamoli': 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ-Iy1K-TS6GStzEE0IWS-ZVImAnWN_lzr355SMH1UUbMGFwHHkpoHQcmfU',
+  'flix bus': 'https://bus-news.com/wp-content/uploads/sites/4/2023/03/Neoplan-5-scaled.jpg',
+  'blablacar': 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQXa9Z-Ie1XfGOGnIoHdQ1TdA50pG0-IwDC3YvJ4IkbuQ&s=10',
 };
 
 const getBusImage = (bus) => {
