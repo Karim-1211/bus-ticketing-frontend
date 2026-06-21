@@ -36,7 +36,7 @@ const BookingHistory = () => {
                 <th className="px-4 py-3 text-left">#</th>
                 <th className="px-4 py-3 text-left">Ticket No.</th>
                 <th className="px-4 py-3 text-left">Schedule ID</th>
-                <th className="px-4 py-3 text-left">Seat ID</th>
+                <th className="px-4 py-3 text-left">Seat</th>
                 <th className="px-4 py-3 text-left">Status</th>
                 <th className="px-4 py-3 text-left">Payment</th>
                 <th className="px-4 py-3 text-left">Booked At</th>
@@ -49,7 +49,7 @@ const BookingHistory = () => {
                   <td className="px-4 py-3">{i + 1}</td>
                   <td className="px-4 py-3 font-bold">{b.ticket_number || '—'}</td>
                   <td className="px-4 py-3">{b.schedule_id}</td>
-                  <td className="px-4 py-3">{b.seat_id}</td>
+                  <td className="px-4 py-3 font-bold text-primary">{b.seat_number || '—'}</td>
                   <td className="px-4 py-3">
                     <span className={`px-3 py-1 rounded-full text-xs font-bold ${b.status === 'confirmed' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
                       {b.status.toUpperCase()}

@@ -16,7 +16,7 @@ const Dashboard = () => {
   const [selectedSchedule, setSelectedSchedule] = useState(null);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [loadingSeats, setLoadingSeats] = useState(false);
-  const [selectedSeats, setSelectedSeats] = useState([]);
+  const [selectedSeat, setSelectedSeat] = useState(null); // single seat object, not an array
   const token = localStorage.getItem('token');
   const role = localStorage.getItem('role');
   const name = localStorage.getItem('name');
@@ -39,21 +39,11 @@ const Dashboard = () => {
   };
 
   const handleProceedToPayment = () => {
-    if (selectedSeats.length === 0 || !selectedSchedule) {
+    if (!selectedSeat || !selectedSchedule) {
       navigate('/book');
       return;
     }
-    const seatLabel = selectedSeats[0];
-    const rowLetter = seatLabel[0];
-    const colNum = parseInt(seatLabel[1]) - 1;
-    const rowIndex = ROWS.indexOf(rowLetter);
-    const seatIndex = rowIndex * 4 + colNum;
-    const seatObj = seats[seatIndex];
-    if (seatObj) {
-      navigate(`/book?schedule_id=${selectedSchedule.id}&seat_id=${seatObj.id}`);
-    } else {
-      navigate('/book');
-    }
+    navigate(`/book?schedule_id=${selectedSchedule.id}&seat_id=${selectedSeat.id}`);
   };
 
   useEffect(() => {
@@ -77,12 +67,12 @@ const Dashboard = () => {
     if (selectedBus?.id === bus.id) {
       setSelectedBus(null);
       setSeats([]);
-      setSelectedSeats([]);
+      setSelectedSeat(null);
       return;
     }
     setSelectedBus(bus);
     setSeats([]);
-    setSelectedSeats([]);
+    setSelectedSeat(null);
     setLoadingSeats(true);
     const busSchedules = schedules.filter(s => s.bus_id === bus.id);
     if (busSchedules.length > 0) {
@@ -96,11 +86,10 @@ const Dashboard = () => {
     setLoadingSeats(false);
   };
 
-  const toggleSeat = (seatLabel, isBooked) => {
-    if (isBooked) return;
-    setSelectedSeats(prev =>
-      prev.includes(seatLabel) ? prev.filter(s => s !== seatLabel) : [...prev, seatLabel]
-    );
+  // Single-select: clicking the same seat again deselects it, clicking a different seat replaces the old one
+  const toggleSeat = (seat) => {
+    if (seat.is_booked) return;
+    setSelectedSeat(prev => (prev?.id === seat.id ? null : seat));
   };
 
   const getRoute = (routeId) => routes.find(r => r.id === routeId);
@@ -284,7 +273,7 @@ const Dashboard = () => {
                 )}
               </div>
               <button
-                onClick={() => { setSelectedBus(null); setSeats([]); setSelectedSeats([]); }}
+                onClick={() => { setSelectedBus(null); setSeats([]); setSelectedSeat(null); }}
                 className="w-9 h-9 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center text-gray-500 font-bold text-lg transition">
                 ✕
               </button>
@@ -305,7 +294,7 @@ const Dashboard = () => {
               <div className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium"
                 style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', color: '#1d4ed8' }}>
                 <div className="w-3 h-3 rounded-sm bg-blue-500"></div>
-                Selected ({selectedSeats.length})
+                Selected ({selectedSeat ? 1 : 0})
               </div>
             </div>
 
@@ -356,12 +345,10 @@ const Dashboard = () => {
                           <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', width: '20px', textAlign: 'right', fontWeight: 600 }}>
                             {rowLetter}
                           </span>
-                          {/* Left 2 seats */}
                           <div className="flex gap-2">
-                            {rowSeats.slice(0, 2).map((seat, colIndex) => {
-                              const seatLabel = `${rowLetter}${colIndex + 1}`;
+                            {rowSeats.slice(0, 2).map((seat) => {
                               const isBooked = seat.is_booked;
-                              const isChosen = selectedSeats.includes(seatLabel);
+                              const isChosen = selectedSeat?.id === seat.id;
                               let bg, border, iconColor, textColor;
                               if (isBooked) {
                                 bg = 'rgba(239,68,68,0.12)'; border = 'rgba(239,68,68,0.3)';
@@ -375,27 +362,24 @@ const Dashboard = () => {
                               }
                               return (
                                 <div key={seat.id}
-                                  onClick={() => toggleSeat(seatLabel, isBooked)}
+                                  onClick={() => toggleSeat(seat)}
                                   className="flex flex-col items-center justify-center rounded-xl transition-transform hover:scale-110"
                                   style={{ width: '48px', height: '48px', background: bg, border: `1.5px solid ${border}`, cursor: isBooked ? 'not-allowed' : 'pointer' }}>
                                   <FaChair style={{ fontSize: '17px', color: iconColor }} />
-                                  <span style={{ fontSize: '9px', fontWeight: 600, color: textColor, lineHeight: 1 }}>{seatLabel}</span>
+                                  <span style={{ fontSize: '9px', fontWeight: 600, color: textColor, lineHeight: 1 }}>{seat.seat_number}</span>
                                 </div>
                               );
                             })}
                           </div>
 
-                          {/* Aisle */}
                           <div className="flex-1 flex justify-center">
                             <div style={{ width: '1px', height: '48px', background: 'rgba(255,255,255,0.07)' }}></div>
                           </div>
 
-                          {/* Right 2 seats */}
                           <div className="flex gap-2">
-                            {rowSeats.slice(2, 4).map((seat, colIndex) => {
-                              const seatLabel = `${rowLetter}${colIndex + 3}`;
+                            {rowSeats.slice(2, 4).map((seat) => {
                               const isBooked = seat.is_booked;
-                              const isChosen = selectedSeats.includes(seatLabel);
+                              const isChosen = selectedSeat?.id === seat.id;
                               let bg, border, iconColor, textColor;
                               if (isBooked) {
                                 bg = 'rgba(239,68,68,0.12)'; border = 'rgba(239,68,68,0.3)';
@@ -409,11 +393,11 @@ const Dashboard = () => {
                               }
                               return (
                                 <div key={seat.id}
-                                  onClick={() => toggleSeat(seatLabel, isBooked)}
+                                  onClick={() => toggleSeat(seat)}
                                   className="flex flex-col items-center justify-center rounded-xl transition-transform hover:scale-110"
                                   style={{ width: '48px', height: '48px', background: bg, border: `1.5px solid ${border}`, cursor: isBooked ? 'not-allowed' : 'pointer' }}>
                                   <FaChair style={{ fontSize: '17px', color: iconColor }} />
-                                  <span style={{ fontSize: '9px', fontWeight: 600, color: textColor, lineHeight: 1 }}>{seatLabel}</span>
+                                  <span style={{ fontSize: '9px', fontWeight: 600, color: textColor, lineHeight: 1 }}>{seat.seat_number}</span>
                                 </div>
                               );
                             })}
@@ -428,15 +412,15 @@ const Dashboard = () => {
                   </div>
                 </div>
 
-                {/* Selected seats info */}
-                {selectedSeats.length > 0 && (
+                {/* Selected seat info */}
+                {selectedSeat && (
                   <div className="mt-4 flex items-center gap-3 px-4 py-3 rounded-xl"
                     style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)' }}>
                     <FaTicketAlt className="text-blue-500" />
                     <span className="text-sm text-blue-700 font-medium">
-                      Selected: <strong>{selectedSeats.join(', ')}</strong>
+                      Selected seat: <strong>{selectedSeat.seat_number}</strong>
                     </span>
-                    <button onClick={() => setSelectedSeats([])}
+                    <button onClick={() => setSelectedSeat(null)}
                       className="ml-auto text-xs text-gray-400 hover:text-gray-600 underline">
                       Clear
                     </button>
@@ -448,7 +432,7 @@ const Dashboard = () => {
                     className="flex items-center gap-2 text-white font-bold px-8 py-3 rounded-xl transition transform hover:scale-105"
                     style={{ background: 'linear-gradient(135deg,#F42A41,#c0152a)', boxShadow: '0 4px 14px rgba(244,42,65,0.35)' }}>
                     <FaTicketAlt />
-                    {selectedSeats.length > 0 ? 'Proceed to Payment →' : 'Book This Bus'}
+                    {selectedSeat ? 'Proceed to Payment →' : 'Book This Bus'}
                     <FaArrowRight />
                   </button>
                 </div>

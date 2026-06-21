@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { FaBus, FaTicketAlt, FaChair } from 'react-icons/fa';
+import { GiSteeringWheel } from 'react-icons/gi';
 import { useSearchParams } from 'react-router-dom';
 import API from '../services/api';
 
@@ -9,6 +10,8 @@ const PAYMENT_METHODS = [
   { key: 'bkash', label: '📱 bKash', color: 'border-pink-300 bg-pink-50 text-pink-700' },
   { key: 'nagad', label: '🔶 Nagad', color: 'border-orange-300 bg-orange-50 text-orange-700' },
 ];
+
+const ROWS = ['A','B','C','D','E','F','G','H','I','J'];
 
 const BookTicket = () => {
   const [searchParams] = useSearchParams();
@@ -22,6 +25,7 @@ const BookTicket = () => {
   const [paymentMethod, setPaymentMethod] = useState('card');
   const [confirmedTicket, setConfirmedTicket] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingSeats, setLoadingSeats] = useState(false);
   const [buses, setBuses] = useState([]);
   const [routes, setRoutes] = useState([]);
 
@@ -53,8 +57,17 @@ const BookTicket = () => {
   const handleSelectSchedule = async (schedule) => {
     setSelectedSchedule(schedule);
     setSelectedSeat(null);
-    const res = await API.get(`/api/bookings/seats/${schedule.id}`);
-    setSeats(res.data);
+    setLoadingSeats(true);
+    try {
+      const res = await API.get(`/api/bookings/seats/${schedule.id}`);
+      setSeats(res.data);
+    } catch (e) {}
+    setLoadingSeats(false);
+  };
+
+  const toggleSeat = (seat) => {
+    if (seat.is_booked) return;
+    setSelectedSeat(prev => (prev?.id === seat.id ? null : seat));
   };
 
   const resetAll = () => {
@@ -83,6 +96,8 @@ const BookTicket = () => {
 
   const route = selectedSchedule ? getRoute(selectedSchedule.route_id) : null;
   const busName = selectedSchedule ? getBusName(selectedSchedule.bus_id) : null;
+  const availableCount = seats.filter(s => !s.is_booked).length;
+  const bookedCount = seats.filter(s => s.is_booked).length;
 
   return (
     <div className="min-h-screen bg-light p-6">
@@ -139,7 +154,6 @@ const BookTicket = () => {
             {/* If coming from dashboard with pre-selection — show only payment */}
             {preScheduleId && selectedSchedule && selectedSeat ? (
               <div className="space-y-6">
-                {/* Trip Summary Card */}
                 <div className="bg-white rounded-2xl shadow p-6">
                   <h2 className="text-xl font-bold text-primary mb-4">🚌 Your Trip</h2>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -170,7 +184,6 @@ const BookTicket = () => {
                   </div>
                 </div>
 
-                {/* Payment Method */}
                 <div className="bg-white rounded-2xl shadow p-6">
                   <h2 className="text-xl font-bold text-primary mb-4">💳 Select Payment Method</h2>
                   <div className="grid grid-cols-3 gap-4">
@@ -183,7 +196,6 @@ const BookTicket = () => {
                   </div>
                 </div>
 
-                {/* Confirm Button */}
                 <button onClick={handleBook} disabled={loading}
                   className="w-full text-white font-bold py-4 rounded-xl transition transform hover:scale-105 text-lg"
                   style={{ background: 'linear-gradient(135deg,#F42A41,#c0152a)', boxShadow: '0 4px 14px rgba(244,42,65,0.35)' }}>
@@ -214,22 +226,126 @@ const BookTicket = () => {
                   </div>
                 </div>
 
+                {/* Live Seat Map — dark bus style */}
                 {selectedSchedule && (
-                  <div className="bg-white rounded-2xl shadow p-6 mb-6">
-                    <h2 className="text-xl font-bold text-primary mb-4">💺 Select a Seat</h2>
-                    <div className="grid grid-cols-5 md:grid-cols-8 lg:grid-cols-10 gap-3">
-                      {seats.map(seat => (
-                        <button key={seat.id} disabled={seat.is_booked}
-                          onClick={() => setSelectedSeat(seat)}
-                          className={`p-3 rounded-lg text-sm font-bold transition flex flex-col items-center gap-1
-                            ${seat.is_booked ? 'bg-gray-200 text-gray-400 cursor-not-allowed' :
-                              selectedSeat?.id === seat.id ? 'bg-primary text-white scale-110 shadow-lg' :
-                              'bg-green-100 text-primary hover:bg-primary hover:text-white'}`}>
-                          <FaChair />
-                          {seat.seat_number}
-                        </button>
-                      ))}
+                  <div className="bg-white rounded-3xl shadow-xl p-6 mb-6 border border-gray-100">
+                    <h2 className="text-xl font-bold text-gray-800 mb-1">💺 Live Seat Map</h2>
+                    <p className="text-gray-400 text-sm mb-4">
+                      {busName} · Departure: {new Date(selectedSchedule.departure_time).toLocaleString()}
+                    </p>
+
+                    <div className="flex gap-3 mb-6 flex-wrap">
+                      <div className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium"
+                        style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', color: '#15803d' }}>
+                        <div className="w-3 h-3 rounded-sm bg-green-500"></div>
+                        Available ({availableCount})
+                      </div>
+                      <div className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium"
+                        style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#b91c1c' }}>
+                        <div className="w-3 h-3 rounded-sm bg-red-500"></div>
+                        Booked ({bookedCount})
+                      </div>
+                      <div className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium"
+                        style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', color: '#1d4ed8' }}>
+                        <div className="w-3 h-3 rounded-sm bg-blue-500"></div>
+                        Selected ({selectedSeat ? 1 : 0})
+                      </div>
                     </div>
+
+                    {loadingSeats ? (
+                      <div className="text-center py-16 text-gray-400">
+                        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                        <p>Loading seats...</p>
+                      </div>
+                    ) : (
+                      <div className="rounded-3xl p-6 mx-auto" style={{ background: '#1a1a2e', maxWidth: '420px' }}>
+                        <div className="text-center mb-3">
+                          <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.35)', letterSpacing: '0.15em', fontWeight: 600 }}>FRONT</span>
+                        </div>
+
+                        <div className="flex items-center gap-2 mb-3 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                          <span style={{ width: '20px' }}></span>
+                          <div className="flex flex-col items-center justify-center rounded-xl"
+                            style={{ width: '48px', height: '48px', background: 'rgba(234,179,8,0.15)', border: '1.5px solid rgba(234,179,8,0.4)' }}>
+                            <GiSteeringWheel style={{ fontSize: '22px', color: '#eab308' }} />
+                          </div>
+                          <div className="flex-1 flex justify-center">
+                            <div style={{ width: '1px', height: '48px', background: 'rgba(255,255,255,0.07)' }}></div>
+                          </div>
+                          <div className="rounded-xl"
+                            style={{ width: '48px', height: '48px', background: 'rgba(255,255,255,0.03)', border: '1.5px dashed rgba(255,255,255,0.1)' }}>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          {ROWS.slice(0, Math.ceil(seats.length / 4)).map((rowLetter, rowIndex) => {
+                            const rowSeats = seats.slice(rowIndex * 4, rowIndex * 4 + 4);
+                            return (
+                              <div key={rowLetter} className="flex items-center gap-2">
+                                <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', width: '20px', textAlign: 'right', fontWeight: 600 }}>
+                                  {rowLetter}
+                                </span>
+                                <div className="flex gap-2">
+                                  {rowSeats.slice(0, 2).map(seat => {
+                                    const isChosen = selectedSeat?.id === seat.id;
+                                    let bg, border, iconColor, textColor;
+                                    if (seat.is_booked) {
+                                      bg = 'rgba(239,68,68,0.12)'; border = 'rgba(239,68,68,0.3)';
+                                      iconColor = '#ef4444'; textColor = 'rgba(239,68,68,0.7)';
+                                    } else if (isChosen) {
+                                      bg = 'rgba(59,130,246,0.2)'; border = 'rgba(59,130,246,0.5)';
+                                      iconColor = '#60a5fa'; textColor = '#93c5fd';
+                                    } else {
+                                      bg = 'rgba(34,197,94,0.12)'; border = 'rgba(34,197,94,0.35)';
+                                      iconColor = '#22c55e'; textColor = 'rgba(255,255,255,0.6)';
+                                    }
+                                    return (
+                                      <div key={seat.id} onClick={() => toggleSeat(seat)}
+                                        className="flex flex-col items-center justify-center rounded-xl transition-transform hover:scale-110"
+                                        style={{ width: '48px', height: '48px', background: bg, border: `1.5px solid ${border}`, cursor: seat.is_booked ? 'not-allowed' : 'pointer' }}>
+                                        <FaChair style={{ fontSize: '17px', color: iconColor }} />
+                                        <span style={{ fontSize: '9px', fontWeight: 600, color: textColor, lineHeight: 1 }}>{seat.seat_number}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                <div className="flex-1 flex justify-center">
+                                  <div style={{ width: '1px', height: '48px', background: 'rgba(255,255,255,0.07)' }}></div>
+                                </div>
+                                <div className="flex gap-2">
+                                  {rowSeats.slice(2, 4).map(seat => {
+                                    const isChosen = selectedSeat?.id === seat.id;
+                                    let bg, border, iconColor, textColor;
+                                    if (seat.is_booked) {
+                                      bg = 'rgba(239,68,68,0.12)'; border = 'rgba(239,68,68,0.3)';
+                                      iconColor = '#ef4444'; textColor = 'rgba(239,68,68,0.7)';
+                                    } else if (isChosen) {
+                                      bg = 'rgba(59,130,246,0.2)'; border = 'rgba(59,130,246,0.5)';
+                                      iconColor = '#60a5fa'; textColor = '#93c5fd';
+                                    } else {
+                                      bg = 'rgba(34,197,94,0.12)'; border = 'rgba(34,197,94,0.35)';
+                                      iconColor = '#22c55e'; textColor = 'rgba(255,255,255,0.6)';
+                                    }
+                                    return (
+                                      <div key={seat.id} onClick={() => toggleSeat(seat)}
+                                        className="flex flex-col items-center justify-center rounded-xl transition-transform hover:scale-110"
+                                        style={{ width: '48px', height: '48px', background: bg, border: `1.5px solid ${border}`, cursor: seat.is_booked ? 'not-allowed' : 'pointer' }}>
+                                        <FaChair style={{ fontSize: '17px', color: iconColor }} />
+                                        <span style={{ fontSize: '9px', fontWeight: 600, color: textColor, lineHeight: 1 }}>{seat.seat_number}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="text-center mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+                          <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.35)', letterSpacing: '0.15em', fontWeight: 600 }}>REAR</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
