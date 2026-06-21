@@ -16,7 +16,7 @@ const Dashboard = () => {
   const [selectedSchedule, setSelectedSchedule] = useState(null);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [loadingSeats, setLoadingSeats] = useState(false);
-  const [selectedSeat, setSelectedSeat] = useState(null); // single seat object, not an array
+  const [selectedSeats, setSelectedSeats] = useState([]); // multi-select: array of seat objects
   const token = localStorage.getItem('token');
   const role = localStorage.getItem('role');
   const name = localStorage.getItem('name');
@@ -39,11 +39,12 @@ const Dashboard = () => {
   };
 
   const handleProceedToPayment = () => {
-    if (!selectedSeat || !selectedSchedule) {
+    if (selectedSeats.length === 0 || !selectedSchedule) {
       navigate('/book');
       return;
     }
-    navigate(`/book?schedule_id=${selectedSchedule.id}&seat_id=${selectedSeat.id}`);
+    const ids = selectedSeats.map(s => s.id).join(',');
+    navigate(`/book?schedule_id=${selectedSchedule.id}&seat_ids=${ids}`);
   };
 
   useEffect(() => {
@@ -67,12 +68,12 @@ const Dashboard = () => {
     if (selectedBus?.id === bus.id) {
       setSelectedBus(null);
       setSeats([]);
-      setSelectedSeat(null);
+      setSelectedSeats([]);
       return;
     }
     setSelectedBus(bus);
     setSeats([]);
-    setSelectedSeat(null);
+    setSelectedSeats([]);
     setLoadingSeats(true);
     const busSchedules = schedules.filter(s => s.bus_id === bus.id);
     if (busSchedules.length > 0) {
@@ -86,11 +87,16 @@ const Dashboard = () => {
     setLoadingSeats(false);
   };
 
-  // Single-select: clicking the same seat again deselects it, clicking a different seat replaces the old one
   const toggleSeat = (seat) => {
     if (seat.is_booked) return;
-    setSelectedSeat(prev => (prev?.id === seat.id ? null : seat));
+    setSelectedSeats(prev => {
+      const exists = prev.find(s => s.id === seat.id);
+      if (exists) return prev.filter(s => s.id !== seat.id);
+      return [...prev, seat];
+    });
   };
+
+  const isSeatSelected = (seatId) => selectedSeats.some(s => s.id === seatId);
 
   const getRoute = (routeId) => routes.find(r => r.id === routeId);
   const currentBus = buses[currentSlide];
@@ -273,7 +279,7 @@ const Dashboard = () => {
                 )}
               </div>
               <button
-                onClick={() => { setSelectedBus(null); setSeats([]); setSelectedSeat(null); }}
+                onClick={() => { setSelectedBus(null); setSeats([]); setSelectedSeats([]); }}
                 className="w-9 h-9 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center text-gray-500 font-bold text-lg transition">
                 ✕
               </button>
@@ -294,7 +300,7 @@ const Dashboard = () => {
               <div className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium"
                 style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', color: '#1d4ed8' }}>
                 <div className="w-3 h-3 rounded-sm bg-blue-500"></div>
-                Selected ({selectedSeat ? 1 : 0})
+                Selected ({selectedSeats.length})
               </div>
             </div>
 
@@ -320,19 +326,15 @@ const Dashboard = () => {
                   <div className="flex items-center gap-2 mb-3 pb-3"
                     style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
                     <span style={{ width: '20px' }}></span>
-                    <div className="flex gap-2">
-                      <div className="flex flex-col items-center justify-center rounded-xl"
-                        style={{ width: '48px', height: '48px', background: 'rgba(234,179,8,0.15)', border: '1.5px solid rgba(234,179,8,0.4)' }}>
-                        <GiSteeringWheel style={{ fontSize: '22px', color: '#eab308' }} />
-                      </div>
+                    <div className="flex flex-col items-center justify-center rounded-xl"
+                      style={{ width: '48px', height: '48px', background: 'rgba(234,179,8,0.15)', border: '1.5px solid rgba(234,179,8,0.4)' }}>
+                      <GiSteeringWheel style={{ fontSize: '22px', color: '#eab308' }} />
                     </div>
                     <div className="flex-1 flex justify-center">
                       <div style={{ width: '1px', height: '48px', background: 'rgba(255,255,255,0.07)' }}></div>
                     </div>
-                    <div className="flex gap-2">
-                      <div className="rounded-xl"
-                        style={{ width: '48px', height: '48px', background: 'rgba(255,255,255,0.03)', border: '1.5px dashed rgba(255,255,255,0.1)' }}>
-                      </div>
+                    <div className="rounded-xl"
+                      style={{ width: '48px', height: '48px', background: 'rgba(255,255,255,0.03)', border: '1.5px dashed rgba(255,255,255,0.1)' }}>
                     </div>
                   </div>
 
@@ -348,7 +350,7 @@ const Dashboard = () => {
                           <div className="flex gap-2">
                             {rowSeats.slice(0, 2).map((seat) => {
                               const isBooked = seat.is_booked;
-                              const isChosen = selectedSeat?.id === seat.id;
+                              const isChosen = isSeatSelected(seat.id);
                               let bg, border, iconColor, textColor;
                               if (isBooked) {
                                 bg = 'rgba(239,68,68,0.12)'; border = 'rgba(239,68,68,0.3)';
@@ -379,7 +381,7 @@ const Dashboard = () => {
                           <div className="flex gap-2">
                             {rowSeats.slice(2, 4).map((seat) => {
                               const isBooked = seat.is_booked;
-                              const isChosen = selectedSeat?.id === seat.id;
+                              const isChosen = isSeatSelected(seat.id);
                               let bg, border, iconColor, textColor;
                               if (isBooked) {
                                 bg = 'rgba(239,68,68,0.12)'; border = 'rgba(239,68,68,0.3)';
@@ -412,15 +414,15 @@ const Dashboard = () => {
                   </div>
                 </div>
 
-                {/* Selected seat info */}
-                {selectedSeat && (
+                {/* Selected seats info */}
+                {selectedSeats.length > 0 && (
                   <div className="mt-4 flex items-center gap-3 px-4 py-3 rounded-xl"
                     style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)' }}>
                     <FaTicketAlt className="text-blue-500" />
                     <span className="text-sm text-blue-700 font-medium">
-                      Selected seat: <strong>{selectedSeat.seat_number}</strong>
+                      Selected: <strong>{selectedSeats.map(s => s.seat_number).join(', ')}</strong> ({selectedSeats.length} seat{selectedSeats.length > 1 ? 's' : ''})
                     </span>
-                    <button onClick={() => setSelectedSeat(null)}
+                    <button onClick={() => setSelectedSeats([])}
                       className="ml-auto text-xs text-gray-400 hover:text-gray-600 underline">
                       Clear
                     </button>
@@ -432,7 +434,7 @@ const Dashboard = () => {
                     className="flex items-center gap-2 text-white font-bold px-8 py-3 rounded-xl transition transform hover:scale-105"
                     style={{ background: 'linear-gradient(135deg,#F42A41,#c0152a)', boxShadow: '0 4px 14px rgba(244,42,65,0.35)' }}>
                     <FaTicketAlt />
-                    {selectedSeat ? 'Proceed to Payment →' : 'Book This Bus'}
+                    {selectedSeats.length > 0 ? `Proceed to Payment (${selectedSeats.length}) →` : 'Book This Bus'}
                     <FaArrowRight />
                   </button>
                 </div>

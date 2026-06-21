@@ -16,14 +16,14 @@ const ROWS = ['A','B','C','D','E','F','G','H','I','J'];
 const BookTicket = () => {
   const [searchParams] = useSearchParams();
   const preScheduleId = searchParams.get('schedule_id');
-  const preSeatId = searchParams.get('seat_id');
+  const preSeatIds = searchParams.get('seat_ids'); // comma-separated
 
   const [schedules, setSchedules] = useState([]);
   const [seats, setSeats] = useState([]);
   const [selectedSchedule, setSelectedSchedule] = useState(null);
-  const [selectedSeat, setSelectedSeat] = useState(null);
+  const [selectedSeats, setSelectedSeats] = useState([]); // array now
   const [paymentMethod, setPaymentMethod] = useState('card');
-  const [confirmedTicket, setConfirmedTicket] = useState(null);
+  const [confirmedTickets, setConfirmedTickets] = useState([]); // array now
   const [loading, setLoading] = useState(false);
   const [loadingSeats, setLoadingSeats] = useState(false);
   const [buses, setBuses] = useState([]);
@@ -32,16 +32,16 @@ const BookTicket = () => {
   useEffect(() => {
     API.get('/api/schedules/').then(res => {
       setSchedules(res.data);
-      // If coming from dashboard with pre-selected schedule
       if (preScheduleId) {
         const found = res.data.find(s => s.id === parseInt(preScheduleId));
         if (found) {
           setSelectedSchedule(found);
           API.get(`/api/bookings/seats/${found.id}`).then(seatRes => {
             setSeats(seatRes.data);
-            if (preSeatId) {
-              const foundSeat = seatRes.data.find(s => s.id === parseInt(preSeatId));
-              if (foundSeat) setSelectedSeat(foundSeat);
+            if (preSeatIds) {
+              const idList = preSeatIds.split(',').map(id => parseInt(id));
+              const foundSeats = seatRes.data.filter(s => idList.includes(s.id));
+              if (foundSeats.length > 0) setSelectedSeats(foundSeats);
             }
           });
         }
@@ -49,14 +49,14 @@ const BookTicket = () => {
     });
     API.get('/api/buses/').then(res => setBuses(res.data));
     API.get('/api/routes/').then(res => setRoutes(res.data));
-  }, [preScheduleId, preSeatId]);
+  }, [preScheduleId, preSeatIds]);
 
   const getBusName = (busId) => buses.find(b => b.id === busId)?.bus_name || `Bus #${busId}`;
   const getRoute = (routeId) => routes.find(r => r.id === routeId);
 
   const handleSelectSchedule = async (schedule) => {
     setSelectedSchedule(schedule);
-    setSelectedSeat(null);
+    setSelectedSeats([]);
     setLoadingSeats(true);
     try {
       const res = await API.get(`/api/bookings/seats/${schedule.id}`);
@@ -67,28 +67,43 @@ const BookTicket = () => {
 
   const toggleSeat = (seat) => {
     if (seat.is_booked) return;
-    setSelectedSeat(prev => (prev?.id === seat.id ? null : seat));
+    setSelectedSeats(prev => {
+      const exists = prev.find(s => s.id === seat.id);
+      if (exists) return prev.filter(s => s.id !== seat.id);
+      return [...prev, seat];
+    });
   };
+
+  const isSeatSelected = (seatId) => selectedSeats.some(s => s.id === seatId);
 
   const resetAll = () => {
     setSelectedSchedule(null);
-    setSelectedSeat(null);
+    setSelectedSeats([]);
     setSeats([]);
     setPaymentMethod('card');
-    setConfirmedTicket(null);
+    setConfirmedTickets([]);
   };
 
   const handleBook = async () => {
-    if (!selectedSeat) return toast.error('Please select a seat!');
+    if (selectedSeats.length === 0) return toast.error('Please select at least one seat!');
     setLoading(true);
+    const results = [];
     try {
-      const res = await API.post(
-        `/api/bookings/?schedule_id=${selectedSchedule.id}&seat_id=${selectedSeat.id}&payment_method=${paymentMethod}`
-      );
-      toast.success(`Booking confirmed! Ticket: ${res.data.ticket_number}`);
-      setConfirmedTicket(res.data);
+      for (const seat of selectedSeats) {
+        const res = await API.post(
+          `/api/bookings/?schedule_id=${selectedSchedule.id}&seat_id=${seat.id}&payment_method=${paymentMethod}`
+        );
+        results.push(res.data);
+      }
+      toast.success(`${results.length} seat${results.length > 1 ? 's' : ''} booked successfully!`);
+      setConfirmedTickets(results);
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Booking failed!');
+      if (results.length > 0) setConfirmedTickets(results);
+      toast.error(
+        err.response?.data?.detail
+          ? `${err.response.data.detail} — ${results.length} seat(s) before this were already booked successfully.`
+          : 'Booking failed for one of the seats.'
+      );
     } finally {
       setLoading(false);
     }
@@ -98,6 +113,8 @@ const BookTicket = () => {
   const busName = selectedSchedule ? getBusName(selectedSchedule.bus_id) : null;
   const availableCount = seats.filter(s => !s.is_booked).length;
   const bookedCount = seats.filter(s => s.is_booked).length;
+  const totalFare = route ? route.base_fare * selectedSeats.length : 0;
+  const totalFarePaid = confirmedTickets.reduce((sum, t) => sum + Number(t.fare || 0), 0);
 
   return (
     <div className="min-h-screen bg-light p-6">
@@ -106,40 +123,50 @@ const BookTicket = () => {
           <FaTicketAlt /> Book a Ticket
         </h1>
 
-        {/* E-Ticket Confirmation */}
-        {confirmedTicket && (
+        {/* E-Ticket(s) Confirmation */}
+        {confirmedTickets.length > 0 && (
           <div className="bg-white rounded-2xl shadow-xl p-8 border-4 border-dashed border-primary">
             <div className="text-center mb-6">
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
                 <span className="text-3xl">✅</span>
               </div>
               <p className="text-secondary font-bold text-sm uppercase tracking-widest">Booking Confirmed</p>
-              <h2 className="text-3xl font-extrabold text-primary mt-1">E-Ticket</h2>
+              <h2 className="text-3xl font-extrabold text-primary mt-1">
+                {confirmedTickets.length > 1 ? `${confirmedTickets.length} E-Tickets` : 'E-Ticket'}
+              </h2>
             </div>
+
+            <div className="space-y-3 mb-6">
+              {confirmedTickets.map(t => (
+                <div key={t.ticket_number} className="flex items-center justify-between bg-green-50 p-4 rounded-xl border border-green-100">
+                  <div>
+                    <p className="text-xs text-gray-400 uppercase font-semibold">Ticket</p>
+                    <p className="font-extrabold text-primary tracking-widest">{t.ticket_number}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 uppercase font-semibold">Seat</p>
+                    <p className="font-bold text-gray-800">{t.seat_number}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 uppercase font-semibold">Passenger</p>
+                    <p className="font-bold text-gray-800">{t.passenger_name}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               <div className="bg-green-50 p-4 rounded-xl border border-green-100">
-                <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Ticket Number</p>
-                <p className="font-extrabold text-primary text-xl tracking-widest">{confirmedTicket.ticket_number}</p>
-              </div>
-              <div className="bg-green-50 p-4 rounded-xl border border-green-100">
-                <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Passenger</p>
-                <p className="font-bold text-gray-800">{confirmedTicket.passenger_name}</p>
-              </div>
-              <div className="bg-green-50 p-4 rounded-xl border border-green-100">
-                <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Seat Number</p>
-                <p className="font-bold text-gray-800">{confirmedTicket.seat_number}</p>
-              </div>
-              <div className="bg-green-50 p-4 rounded-xl border border-green-100">
                 <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Payment Method</p>
-                <p className="font-bold text-gray-800 uppercase">{confirmedTicket.payment_method}</p>
+                <p className="font-bold text-gray-800 uppercase">{confirmedTickets[0].payment_method}</p>
               </div>
               <div className="bg-green-50 p-4 rounded-xl border border-green-100">
                 <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Departure</p>
-                <p className="font-bold text-gray-800">{new Date(confirmedTicket.departure_time).toLocaleString()}</p>
+                <p className="font-bold text-gray-800">{new Date(confirmedTickets[0].departure_time).toLocaleString()}</p>
               </div>
-              <div className="bg-red-50 p-4 rounded-xl border border-red-100">
-                <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Fare Paid</p>
-                <p className="font-extrabold text-secondary text-2xl">৳{confirmedTicket.fare}</p>
+              <div className="bg-red-50 p-4 rounded-xl border border-red-100 md:col-span-2">
+                <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Total Fare Paid ({confirmedTickets.length} seat{confirmedTickets.length > 1 ? 's' : ''})</p>
+                <p className="font-extrabold text-secondary text-2xl">৳{totalFarePaid}</p>
               </div>
             </div>
             <button onClick={resetAll}
@@ -149,10 +176,10 @@ const BookTicket = () => {
           </div>
         )}
 
-        {!confirmedTicket && (
+        {confirmedTickets.length === 0 && (
           <>
-            {/* If coming from dashboard with pre-selection — show only payment */}
-            {preScheduleId && selectedSchedule && selectedSeat ? (
+            {/* If coming from dashboard with pre-selection */}
+            {preScheduleId && selectedSchedule && selectedSeats.length > 0 ? (
               <div className="space-y-6">
                 <div className="bg-white rounded-2xl shadow p-6">
                   <h2 className="text-xl font-bold text-primary mb-4">🚌 Your Trip</h2>
@@ -162,16 +189,16 @@ const BookTicket = () => {
                       <p className="font-bold text-primary">{busName}</p>
                     </div>
                     <div className="bg-green-50 p-4 rounded-xl">
-                      <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Seat</p>
-                      <p className="font-bold text-primary">{selectedSeat.seat_number}</p>
+                      <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Seat{selectedSeats.length > 1 ? 's' : ''}</p>
+                      <p className="font-bold text-primary">{selectedSeats.map(s => s.seat_number).join(', ')}</p>
                     </div>
                     <div className="bg-green-50 p-4 rounded-xl">
                       <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Route</p>
                       <p className="font-bold text-primary">{route ? `${route.origin} → ${route.destination}` : '-'}</p>
                     </div>
                     <div className="bg-red-50 p-4 rounded-xl">
-                      <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Fare</p>
-                      <p className="font-bold text-secondary text-lg">৳{route?.base_fare}</p>
+                      <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Total Fare</p>
+                      <p className="font-bold text-secondary text-lg">৳{totalFare}</p>
                     </div>
                     <div className="bg-green-50 p-4 rounded-xl col-span-2">
                       <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Departure</p>
@@ -199,7 +226,7 @@ const BookTicket = () => {
                 <button onClick={handleBook} disabled={loading}
                   className="w-full text-white font-bold py-4 rounded-xl transition transform hover:scale-105 text-lg"
                   style={{ background: 'linear-gradient(135deg,#F42A41,#c0152a)', boxShadow: '0 4px 14px rgba(244,42,65,0.35)' }}>
-                  {loading ? 'Processing...' : `✅ Confirm & Pay via ${paymentMethod.toUpperCase()}`}
+                  {loading ? 'Processing...' : `✅ Confirm & Pay via ${paymentMethod.toUpperCase()} (${selectedSeats.length} seat${selectedSeats.length > 1 ? 's' : ''})`}
                 </button>
               </div>
             ) : (
@@ -226,7 +253,7 @@ const BookTicket = () => {
                   </div>
                 </div>
 
-                {/* Live Seat Map — dark bus style */}
+                {/* Live Seat Map */}
                 {selectedSchedule && (
                   <div className="bg-white rounded-3xl shadow-xl p-6 mb-6 border border-gray-100">
                     <h2 className="text-xl font-bold text-gray-800 mb-1">💺 Live Seat Map</h2>
@@ -248,7 +275,7 @@ const BookTicket = () => {
                       <div className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium"
                         style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', color: '#1d4ed8' }}>
                         <div className="w-3 h-3 rounded-sm bg-blue-500"></div>
-                        Selected ({selectedSeat ? 1 : 0})
+                        Selected ({selectedSeats.length})
                       </div>
                     </div>
 
@@ -287,7 +314,7 @@ const BookTicket = () => {
                                 </span>
                                 <div className="flex gap-2">
                                   {rowSeats.slice(0, 2).map(seat => {
-                                    const isChosen = selectedSeat?.id === seat.id;
+                                    const isChosen = isSeatSelected(seat.id);
                                     let bg, border, iconColor, textColor;
                                     if (seat.is_booked) {
                                       bg = 'rgba(239,68,68,0.12)'; border = 'rgba(239,68,68,0.3)';
@@ -314,7 +341,7 @@ const BookTicket = () => {
                                 </div>
                                 <div className="flex gap-2">
                                   {rowSeats.slice(2, 4).map(seat => {
-                                    const isChosen = selectedSeat?.id === seat.id;
+                                    const isChosen = isSeatSelected(seat.id);
                                     let bg, border, iconColor, textColor;
                                     if (seat.is_booked) {
                                       bg = 'rgba(239,68,68,0.12)'; border = 'rgba(239,68,68,0.3)';
@@ -349,7 +376,7 @@ const BookTicket = () => {
                   </div>
                 )}
 
-                {selectedSeat && (
+                {selectedSeats.length > 0 && (
                   <div className="bg-white rounded-2xl shadow p-6 mb-6">
                     <h2 className="text-xl font-bold text-primary mb-4">💳 Select Payment Method</h2>
                     <div className="grid grid-cols-3 gap-4">
@@ -363,7 +390,7 @@ const BookTicket = () => {
                   </div>
                 )}
 
-                {selectedSeat && (
+                {selectedSeats.length > 0 && (
                   <div className="bg-white rounded-2xl shadow p-6">
                     <h2 className="text-xl font-bold text-primary mb-4">📋 Booking Summary</h2>
                     <div className="grid grid-cols-2 gap-4 mb-4">
@@ -372,21 +399,21 @@ const BookTicket = () => {
                         <p className="font-bold text-primary">{busName}</p>
                       </div>
                       <div className="bg-green-50 p-4 rounded-xl">
-                        <p className="text-sm text-gray-500">Seat</p>
-                        <p className="font-bold text-primary">{selectedSeat.seat_number}</p>
+                        <p className="text-sm text-gray-500">Seat{selectedSeats.length > 1 ? 's' : ''}</p>
+                        <p className="font-bold text-primary">{selectedSeats.map(s => s.seat_number).join(', ')}</p>
                       </div>
                       <div className="bg-green-50 p-4 rounded-xl">
                         <p className="text-sm text-gray-500">Departure</p>
                         <p className="font-bold text-primary">{new Date(selectedSchedule.departure_time).toLocaleString()}</p>
                       </div>
                       <div className="bg-red-50 p-4 rounded-xl">
-                        <p className="text-sm text-gray-500">Fare</p>
-                        <p className="font-bold text-secondary">৳{route?.base_fare}</p>
+                        <p className="text-sm text-gray-500">Total Fare</p>
+                        <p className="font-bold text-secondary">৳{totalFare}</p>
                       </div>
                     </div>
                     <button onClick={handleBook} disabled={loading}
                       className="w-full bg-secondary hover:bg-red-700 text-white font-bold py-3 rounded-xl transition transform hover:scale-105">
-                      {loading ? 'Processing...' : `✅ Confirm & Pay via ${paymentMethod.toUpperCase()}`}
+                      {loading ? 'Processing...' : `✅ Confirm & Pay via ${paymentMethod.toUpperCase()} (${selectedSeats.length} seat${selectedSeats.length > 1 ? 's' : ''})`}
                     </button>
                   </div>
                 )}
