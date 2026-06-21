@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { FaBus, FaTicketAlt, FaChair } from 'react-icons/fa';
 import { GiSteeringWheel } from 'react-icons/gi';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import API from '../services/api';
 
 const PAYMENT_METHODS = [
@@ -13,8 +13,25 @@ const PAYMENT_METHODS = [
 
 const ROWS = ['A','B','C','D','E','F','G','H','I','J'];
 
+// Bus name (lowercase, trimmed) -> photo URL
+const BUS_IMAGES = {
+  'green line': 'https://images.unsplash.com/photo-1570125909232-eb263c188f7e?w=400',
+  'nabil': 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=400',
+  'hanif': 'https://grabcad.com/screenshots/pics/3674e8fab755506f746655413dc96f8c/large.jpg',
+  'shyamoli': 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ-Iy1K-TS6GStzEE0IWS-ZVImAnWN_lzr355SMH1UUbMGFwHHkpoHQcmfU',
+  'blablacar': 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQXa9Z-Ie1XfGOGnIoHdQ1TdA50pG0-IwDC3YvJ4IkbuQ&s=10',
+  'flix bus': 'https://bus-news.com/wp-content/uploads/sites/4/2023/03/Neoplan-5-scaled.jpg',
+};
+
+const getBusImage = (bus) => {
+  if (!bus) return null;
+  const key = bus.bus_name?.toLowerCase().trim();
+  return BUS_IMAGES[key] || bus.image_url || null;
+};
+
 const BookTicket = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const preScheduleId = searchParams.get('schedule_id');
   const preSeatIds = searchParams.get('seat_ids'); // comma-separated
 
@@ -52,6 +69,7 @@ const BookTicket = () => {
   }, [preScheduleId, preSeatIds]);
 
   const getBusName = (busId) => buses.find(b => b.id === busId)?.bus_name || `Bus #${busId}`;
+  const getBus = (busId) => buses.find(b => b.id === busId);
   const getRoute = (routeId) => routes.find(r => r.id === routeId);
 
   const handleSelectSchedule = async (schedule) => {
@@ -99,11 +117,23 @@ const BookTicket = () => {
       setConfirmedTickets(results);
     } catch (err) {
       if (results.length > 0) setConfirmedTickets(results);
-      toast.error(
-        err.response?.data?.detail
-          ? `${err.response.data.detail} — ${results.length} seat(s) before this were already booked successfully.`
-          : 'Booking failed for one of the seats.'
-      );
+
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail;
+
+      if (status === 401) {
+        toast.error('Your session has expired — please log in again to finish booking.');
+        localStorage.clear();
+        setTimeout(() => navigate('/login'), 1500);
+      } else if (detail) {
+        toast.error(
+          results.length > 0
+            ? `${detail} — ${results.length} seat(s) before this were already booked successfully.`
+            : detail
+        );
+      } else {
+        toast.error('Booking failed for one of the seats.');
+      }
     } finally {
       setLoading(false);
     }
@@ -237,16 +267,50 @@ const BookTicket = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {schedules.map(s => {
                       const r = getRoute(s.route_id);
+                      const bus = getBus(s.bus_id);
+                      const imgUrl = getBusImage(bus);
+                      const isSelected = selectedSchedule?.id === s.id;
                       return (
                         <div key={s.id} onClick={() => handleSelectSchedule(s)}
-                          className={`border-2 rounded-xl p-4 cursor-pointer transition hover:shadow-md ${selectedSchedule?.id === s.id ? 'border-primary bg-green-50' : 'border-gray-200 hover:border-primary'}`}>
-                          <div className="flex items-center gap-2 mb-2">
-                            <FaBus className="text-primary" />
-                            <span className="font-bold text-gray-800">{getBusName(s.bus_id)}</span>
+                          className={`border-2 rounded-xl overflow-hidden cursor-pointer transition hover:shadow-md ${isSelected ? 'border-primary' : 'border-gray-200 hover:border-primary'}`}>
+                          <div className="relative h-28 bg-gray-100">
+                            {imgUrl && (
+                              <img
+                                src={imgUrl}
+                                alt={bus?.bus_name || 'Bus'}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.target.style.display = 'none';
+                                  e.target.nextSibling.style.display = 'flex';
+                                }}
+                              />
+                            )}
+                            <div
+                              className="w-full h-full items-center justify-center"
+                              style={{ display: imgUrl ? 'none' : 'flex' }}
+                            >
+                              <FaBus className="text-gray-300 text-3xl" />
+                            </div>
+                            {bus?.bus_type && (
+                              <span className={`absolute top-2 left-2 text-xs font-bold px-2 py-0.5 rounded-full ${bus.bus_type === 'AC' ? 'bg-blue-500 text-white' : 'bg-gray-600 text-white'}`}>
+                                {bus.bus_type}
+                              </span>
+                            )}
+                            {isSelected && (
+                              <span className="absolute top-2 right-2 bg-primary text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                                Selected
+                              </span>
+                            )}
                           </div>
-                          {r && <p className="text-sm font-semibold text-gray-600">📍 {r.origin} → {r.destination}</p>}
-                          {r && <p className="text-sm text-secondary font-bold">৳{r.base_fare}</p>}
-                          <p className="text-sm text-green-600 font-semibold mt-1">🕐 {new Date(s.departure_time).toLocaleString()}</p>
+                          <div className={`p-4 ${isSelected ? 'bg-green-50' : ''}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              <FaBus className="text-primary" />
+                              <span className="font-bold text-gray-800">{getBusName(s.bus_id)}</span>
+                            </div>
+                            {r && <p className="text-sm font-semibold text-gray-600">📍 {r.origin} → {r.destination}</p>}
+                            {r && <p className="text-sm text-secondary font-bold">৳{r.base_fare}</p>}
+                            <p className="text-sm text-green-600 font-semibold mt-1">🕐 {new Date(s.departure_time).toLocaleString()}</p>
+                          </div>
                         </div>
                       );
                     })}
